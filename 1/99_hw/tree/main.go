@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"strings"
 )
 
 const (
@@ -14,36 +15,46 @@ const (
 	DashShape = "─"
 )
 
-func tabify(output io.Writer) io.Writer {
-	fmt.Fprint(output, "\t")
-	return output
+func countEntries(entries []fs.DirEntry, printFiles bool) (count int) {
+	for _, e := range entries {
+		// Skip files.
+		if !e.IsDir() && !printFiles {
+			continue
+		}
+		count++
+	}
+	return
 }
 
-func entryInfo(e fs.DirEntry) (string, error) {
+func entryInfo(e fs.DirEntry) (info string, err error) {
 	fi, err := e.Info()
 	if err != nil {
-		return "", err
+		return
 	}
 
-	infoString := fi.Name()
+	info = fi.Name()
 	if !fi.IsDir() {
 		s := fi.Size()
 		if s == 0 {
-			infoString += " " + "(empty)"
+			info += " " + "(empty)"
 		} else {
-			infoString += " " + fmt.Sprintf("(%db)", s)
+			info += " " + fmt.Sprintf("(%db)", s)
 		}
 	}
-	return infoString, nil
+	return
 }
 
-func dirTree(output io.Writer, path string, printFiles bool) error {
+func dirTreePrefixed(output io.Writer, path string, printFiles bool, prefix string) error {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return err
 	}
 
+	entriesCount := countEntries(entries, printFiles)
+	idx := 0
+
 	for _, e := range entries {
+		// Skip files.
 		if !e.IsDir() && !printFiles {
 			continue
 		}
@@ -51,16 +62,34 @@ func dirTree(output io.Writer, path string, printFiles bool) error {
 		if err != nil {
 			return err
 		}
-		println(info)
+
+		isLastEntry := entriesCount == 1 || idx+1 == entriesCount
+		if isLastEntry {
+			fmt.Fprint(output, prefix+LShape+strings.Repeat(DashShape, 3)+info+"\n")
+		} else {
+			fmt.Fprint(output, prefix+TShape+strings.Repeat(DashShape, 3)+info+"\n")
+		}
+
 		if e.IsDir() {
-			err = dirTree(tabify(output), path+"/"+e.Name(), printFiles)
+			var err error
+			if isLastEntry {
+				err = dirTreePrefixed(output, path+"/"+e.Name(), printFiles, prefix+"\t")
+			} else {
+				err = dirTreePrefixed(output, path+"/"+e.Name(), printFiles, prefix+ISHape+"\t")
+			}
+
 			if err != nil {
 				return err
 			}
 		}
+		idx++
 	}
 
 	return nil
+}
+
+func dirTree(output io.Writer, path string, printFiles bool) error {
+	return dirTreePrefixed(output, path, printFiles, "")
 }
 
 func main() {
